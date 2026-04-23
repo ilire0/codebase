@@ -131,20 +131,27 @@ def start_sniffer(interface="wlan0mon", scan_duration=70, interval=30):
         print("\n[!] Scan stopped by user.")
         print_network_summary()
 
+def packet_handler(packet):
+    """
+    Filters packets in Python before passing to parse_beacon.
+    """
+    if packet.haslayer(Dot11Beacon):
+        parse_beacon(packet)
+
+
 def scan_all_channels(interface, duration):
-    """
-    Scan all Wi-Fi channels by hopping through each one.
-    5 seconds per channel for thorough coverage.
-    """
-    time_per_channel = 5  # 5 seconds per channel
+    time_per_channel = 5
     
     for channel in CHANNELS_2GHZ:
         try:
-            set_channel(interface, channel)
-            time.sleep(0.2)  # Brief settle time
-            # Sniff on this channel
-            sniff(iface=interface, prn=parse_beacon, store=False, 
-                  timeout=time_per_channel, filter="type mgt subtype beacon")
+            subprocess.run(['iw', 'dev', interface, 'set', 'channel', str(channel)],
+                           capture_output=True, timeout=2)
+
+            time.sleep(0.2)
+
+            sniff(iface=interface, prn=packet_handler, store=False,
+                  timeout=time_per_channel)
+
         except Exception as e:
             print(f"[!] Error on channel {channel}: {e}")
 
