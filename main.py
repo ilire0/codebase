@@ -12,6 +12,7 @@ from utils.report import (
     export_json,
     print_network_summary
 )
+from utils.report import export_pdf
 
 # -------------------------------------------------
 # Global runtime control
@@ -93,6 +94,12 @@ def main(interface="wlan0mon"):
         export_json(networks)
     except Exception as e:
         print(f"[!] Export error: {e}")
+
+    try:
+        pdf_path = export_pdf(networks)
+        print(f"[✓] PDF report created: {pdf_path}")
+    except Exception as e:
+        print(f"[!] PDF export error: {e}")
 
     print("\n[✓] Scan stopped cleanly")
 

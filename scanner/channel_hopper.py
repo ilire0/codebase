@@ -36,6 +36,9 @@ CHANNELS_6GHZ = [
     21, 25, 29, 33
 ]
 
+# Combined list for full-band scanning
+CHANNELS_ALL = CHANNELS_24GHZ + CHANNELS_5GHZ + CHANNELS_6GHZ
+
 
 """
 ====================================================
@@ -119,8 +122,8 @@ def set_channel(interface, channel):
 """
 def hop_channels(
     interface,
-    channels=CHANNELS_24GHZ,
-    delay=0.5
+    channels=CHANNELS_ALL,
+    delay=2.0
 ):
 
     for channel in channels:
@@ -152,8 +155,8 @@ def hop_channels(
 """
 def continuous_channel_hop(
     interface,
-    channels=CHANNELS_24GHZ,
-    delay=0.5
+    channels=CHANNELS_ALL,
+    delay=2.0
 ):
 
     log_info(
