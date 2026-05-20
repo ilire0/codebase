@@ -1,0 +1,2 @@
+# Required dependencies for the ITSec Wifi Testbed project
+scapy
