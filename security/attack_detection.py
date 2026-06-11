@@ -1,3 +1,4 @@
+from collections import defaultdict, deque
 from scapy.layers.dot11 import (
     Dot11,
     Dot11ProbeReq,
@@ -29,6 +30,8 @@ from utils.logger import (
 DEAUTH_THRESHOLD = 10
 DISASSOC_THRESHOLD = 10
 PROBE_FLOOD_THRESHOLD = 30
+BEACON_FLOOD_THRESHOLD = 50
+EVENT_WINDOW_SECONDS = 60
 
 
 """
@@ -37,10 +40,10 @@ PROBE_FLOOD_THRESHOLD = 30
 ====================================================
 """
 
-deauth_counter = {}
-disassoc_counter = {}
-probe_counter = {}
-beacon_counter = {}
+deauth_events = defaultdict(deque)
+disassoc_events = defaultdict(deque)
+probe_events = defaultdict(deque)
+beacon_events = defaultdict(deque)
 
 
 """
@@ -91,6 +94,12 @@ def register_attack(attack):
 *   DEAUTH detection (FIXED)
 ====================================================
 """
+def _prune_old_events(queue):
+    cutoff = time.time() - EVENT_WINDOW_SECONDS
+    while queue and queue[0] < cutoff:
+        queue.popleft()
+
+
 def detect_deauthentication_attack(packet):
 
     if not packet.haslayer(Dot11):
@@ -98,7 +107,6 @@ def detect_deauthentication_attack(packet):
 
     dot11 = packet[Dot11]
 
-    # subtype 12 = Deauth
     if dot11.type != 0 or dot11.subtype != 12:
         return
 
@@ -107,20 +115,21 @@ def detect_deauthentication_attack(packet):
 
     scan_statistics["deauth_frames"] += 1
 
-    deauth_counter[source] = deauth_counter.get(source, 0) + 1
+    queue = deauth_events[source]
+    _prune_old_events(queue)
+    queue.append(time.time())
 
-    if deauth_counter[source] >= DEAUTH_THRESHOLD:
-
+    if len(queue) >= DEAUTH_THRESHOLD:
         attack = create_attack_object(
             "Deauthentication Attack",
             source=source,
             target=target,
-            description="High number of deauth frames detected",
+            description="High number of deauth frames detected within a short window",
             severity="HIGH"
         )
 
         register_attack(attack)
-        deauth_counter[source] = 0
+        queue.clear()
 
 
 """
@@ -135,7 +144,6 @@ def detect_disassociation_attack(packet):
 
     dot11 = packet[Dot11]
 
-    # subtype 10 = Disassoc
     if dot11.type != 0 or dot11.subtype != 10:
         return
 
@@ -144,20 +152,21 @@ def detect_disassociation_attack(packet):
 
     scan_statistics["disassoc_frames"] += 1
 
-    disassoc_counter[source] = disassoc_counter.get(source, 0) + 1
+    queue = disassoc_events[source]
+    _prune_old_events(queue)
+    queue.append(time.time())
 
-    if disassoc_counter[source] >= DISASSOC_THRESHOLD:
-
+    if len(queue) >= DISASSOC_THRESHOLD:
         attack = create_attack_object(
             "Disassociation Attack",
             source=source,
             target=target,
-            description="High number of disassociation frames detected",
+            description="High number of disassociation frames detected within a short window",
             severity="HIGH"
         )
 
         register_attack(attack)
-        disassoc_counter[source] = 0
+        queue.clear()
 
 
 """
@@ -172,19 +181,20 @@ def detect_probe_flood(packet):
 
     source = packet.addr2
 
-    probe_counter[source] = probe_counter.get(source, 0) + 1
+    queue = probe_events[source]
+    _prune_old_events(queue)
+    queue.append(time.time())
 
-    if probe_counter[source] >= PROBE_FLOOD_THRESHOLD:
-
+    if len(queue) >= PROBE_FLOOD_THRESHOLD:
         attack = create_attack_object(
             "Probe Request Flood",
             source=source,
-            description="Excessive probe requests detected",
+            description="Excessive probe requests detected within a short time window",
             severity="MEDIUM"
         )
 
         register_attack(attack)
-        probe_counter[source] = 0
+        queue.clear()
 
 
 """
@@ -199,19 +209,20 @@ def detect_beacon_flood(packet):
 
     source = packet.addr2
 
-    beacon_counter[source] = beacon_counter.get(source, 0) + 1
+    queue = beacon_events[source]
+    _prune_old_events(queue)
+    queue.append(time.time())
 
-    if beacon_counter[source] >= 50:
-
+    if len(queue) >= BEACON_FLOOD_THRESHOLD:
         attack = create_attack_object(
             "Beacon Flood / Fake AP Spam",
             source=source,
-            description="Excessive beacon frames detected",
+            description="Excessive beacon frames detected within a short time window",
             severity="HIGH"
         )
 
         register_attack(attack)
-        beacon_counter[source] = 0
+        queue.clear()
 
 
 """
@@ -289,9 +300,6 @@ def detect_attacks(packet):
 
     try:
 
-        if packet.haslayer(Dot11):
-            scan_statistics["management_frames"] += 1
-
         detect_deauthentication_attack(packet)
         detect_disassociation_attack(packet)
         detect_probe_flood(packet)
@@ -310,9 +318,9 @@ def detect_attacks(packet):
 """
 def reset_attack_counters():
 
-    deauth_counter.clear()
-    disassoc_counter.clear()
-    probe_counter.clear()
-    beacon_counter.clear()
+    deauth_events.clear()
+    disassoc_events.clear()
+    probe_events.clear()
+    beacon_events.clear()
 
     log_info("Attack counters reset")
